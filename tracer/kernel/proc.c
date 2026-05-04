@@ -146,8 +146,9 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
-  //enable trace
+  //++ initialize tracing as disabled (default = off)
   p->trace_enabled = 0;
+  
   return p;
 }
 
