@@ -131,62 +131,77 @@ static uint64 (*syscalls[])(void) = {
 [SYS_trace]   sys_trace,
 };
 
+//++
+// syscall names table - index matches syscall numbers in syscall.h
 static char *syscall_names[] = {
-"",
-"fork",
-"exit",
-"wait",
-"pipe",
-"read",
-"kill",
-"exec",
-"fstat",
-"chdir",
-"dup",
-"getpid",
-"sbrk",
-"sleep",
-"uptime",
-"open",
-"write",
-"mknod",
-"unlink",
-"link",
-"mkdir",
-"close",
+"",           // 0 is not a syscall
+"fork",       // 1 is SYS_fork
+"exit",       // 2 is SYS_exit
+"wait",       // 3 is SYS_wait
+"pipe",       // 4 is SYS_pipe
+"read",       // 5 is SYS_read
+"kill",       // 6 is SYS_kill
+"exec",       // 7 is SYS_exec
+"fstat",      // 8 is SYS_fstat
+"chdir",      // 9 is SYS_chdir
+"dup",        // 10 is SYS_dup
+"getpid",     // 11 is SYS_getpid
+"sbrk",       // 12 is SYS_sbrk
+"sleep",      // 13 is SYS_pause
+"uptime",     // 14 is SYS_uptime
+"open",       // 15 is SYS_open
+"write",      // 16 is SYS_write
+"mknod",      // 17 is SYS_mknod
+"unlink",     // 18 is SYS_unlink
+"link",       // 19 is SYS_link
+"mkdir",      // 20 is SYS_mkdir
+"close",      // 21 is SYS_close
 
 };
 
+/**
+ * trace_syscall:
+ * ----------------
+ * Logs a system call in JSON format.
+ *
+ * Parameters:
+ * - p    : pointer to the current process
+ * - num  : syscall number
+ * - args : array of syscall arguments (from registers a0–a5)
+ *
+ * Behavior:
+ * - Validates syscall number.
+ * - Prints metadata (timestamp, pid, process name, syscall name).
+ * - Decodes arguments:
+ *      • Converts pointer args (strings) using copyinstr().
+ *      • Prints raw values if decoding fails.
+ * - Prints return value from trapframe (a0).
+ *
+ * Notes:
+ * - Uses 'ticks' as timestamp (xv6 clock).
+ * - Some syscalls are handled specially (e.g., open, exec).
+ * - Others fallback to generic argument printing.
+ */
+
 void
 trace_syscall(struct proc *p,int num,uint64 *args){
+// Validate syscall number range
 if(num < 1 || num >= NELEM(syscall_names))
  return;
 
 
 // get args from trapframe registers a0-a5
-extern uint ticks;
-char strbuf[64]; //buffer for string args
-
-//for now print minimal JSON
-//printf("\n{\"timestamp\":%d,\"pid\":\"%s\","
-//        "\"process\":\"%s\","
-//        "\"syscall\":%d,\"args\":[%ld,%ld,%ld,%ld,%ld],\"return\":%d}\n",
-//ticks,
-//p->pid,
-//p->name,
-//syscall_names[num],
-//args[0],args[1],args[2],args[3],args[4],
-//(int)p->trapframe->a0
-//);
-
+extern uint ticks;  // system time (ticks since boot)
+char strbuf[64];    // buffer for string args
 
 printf("\n{\"timestamp\":%d,\"pid\":%d,"
         "\"process\":\"%s\","
         "\"syscall\":%s,\"args\":[",
 	ticks,p->pid,p->name,syscall_names[num]
 );
-
+// Case 1: syscall with string as first argument (e.g., open)
 if(num==15){
+  // Try to copy string from user space
   if(copyinstr(p->pagetable, strbuf, args[0],sizeof(strbuf)) ==0)
   {
     printf("\"%s\",%ld,%ld",strbuf,args[1],args[2]);
@@ -194,10 +209,14 @@ if(num==15){
   else{
      printf("%ld,%ld,%ld",args[0],args[1],args[2]);
   }
-}else if(num==7){
+}
+// Case 2: syscall uses process name (e.g., exec-style)
+else if(num==7){
   printf("\"%s\",%ld",p->name,args[1]);
 
-}else if(num==9 || num == 17 || num == 18 || num ==20){
+}
+// Case 3: syscalls with string first argument (multiple types)
+else if(num==9 || num == 17 || num == 18 || num ==20){
   if(copyinstr(p->pagetable, strbuf, args[0],sizeof(strbuf)) ==0)
   {
     printf("\"%s\",%ld,%ld",strbuf,args[1],args[2]);
@@ -205,7 +224,9 @@ if(num==15){
   else{
      printf("%ld,%ld,%ld",args[0],args[1],args[2]);
   }
-}else if(num==19){
+}
+ // Case 4: syscall with two string arguments (e.g., link)
+else if(num==19){
   char strbuf2[64];
   if(copyinstr(p->pagetable, strbuf, args[0],sizeof(strbuf)) ==0&&
   copyinstr(p->pagetable, strbuf2, args[1],sizeof(strbuf2)) ==0)
@@ -216,6 +237,7 @@ if(num==15){
      printf("%ld,%ld",args[0],args[1]);
   }
 }
+// Default case: print raw arguments
 else{
 
 printf("%ld,%ld,%ld,%ld,%ld",args[0],args[1],args[2],args[3],args[4]);
@@ -225,17 +247,22 @@ printf("%ld,%ld,%ld,%ld,%ld",args[0],args[1],args[2],args[3],args[4]);
 printf("],\"return\":%d}\n",(int)p->trapframe->a0);
 
 }
+
+
 void
 syscall(void)
 {
+
   int num;
   struct proc *p = myproc();
-
-  num = p->trapframe->a7;
+  
+  //++ trace syscall before excute, in case of exit syscall
+  num = p->trapframe->a7; // a7 is the system call number
   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
     // Use num to lookup the system call function for num, call it,
     // and store its return value in p->trapframe->a0
 
+    //++ save args before excute syscall, in case of exit syscall
     uint64 saved_args[6];
     saved_args[0]=p->trapframe->a0;
     saved_args[1]=p->trapframe->a1;
@@ -243,8 +270,9 @@ syscall(void)
     saved_args[3]=p->trapframe->a3;
     saved_args[4]=p->trapframe->a4;
     saved_args[5]=p->trapframe->a5;
+
     // trace exite before it excutes -- process dies after
-    if(p->trace_enabled && num ==2){
+    if(p->trace_enabled && num == SYS_exit){ // add a flag to proc struct
         if(trace_target_pid == -1 || p->pid == trace_target_pid){
             trace_syscall(p, num, saved_args);
          }
@@ -252,8 +280,8 @@ syscall(void)
 
     p->trapframe->a0 = syscalls[num](); // excute syscall
 
-  //- tracer hook --------------------
-   if(p->trace_enabled && num != 2){
+  //--- tracer hook --------------------
+   if(p->trace_enabled && num != SYS_exit){
     if(trace_target_pid == -1 || p->pid == trace_target_pid){
 	trace_syscall(p, num, saved_args);
      }

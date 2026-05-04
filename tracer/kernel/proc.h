@@ -84,7 +84,8 @@ enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 // Per-process state
 struct proc {
   struct spinlock lock;
-
+  
+  // trace_enabled is set to 1 when the process should be traced
   int trace_enabled;
 
   // p->lock must be held when using these:

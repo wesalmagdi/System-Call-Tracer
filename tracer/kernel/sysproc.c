@@ -95,6 +95,7 @@ sys_kill(void)
 
 // return how many clock tick interrupts have occurred
 // since start.
+
 uint64
 sys_uptime(void)
 {
@@ -105,32 +106,59 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+/**
+ * sys_trace:
+ * ----------
+ * System call to enable tracing for a process.
+ *
+ * Behavior:
+ * - Takes a PID as input from user space.
+ * - If PID matches the current process:
+ *      → enable tracing for the current process.
+ * - Otherwise:
+ *      iterate over the global process table to find the target PID
+ *      if found, enable tracing for that process.
+ *
+ * Synchronization:
+ * - Uses per-process locking (spinlocks) to safely access and modify
+ *   process state and avoid race conditions.
+ *
+ * Return value:
+ * - Returns 0 on success.
+ * - Returns -1 if the PID is not found.
+ */
 uint64
 sys_trace(void){
    int pid;
    argint(0,&pid); // get pid argument from user
    struct proc *p = myproc();
-
+  // case 1: current process
    if(pid == p->pid){
+      acquire(&p->lock);
       p->trace_enabled = 1;
-
+      release(&p->lock); 
+      return 0;
    }
-   else{
+   // case 2: search other processes
+    extern struct proc proc[];
+    int found = 0;
 
-     // find proc by pid and enable trace
-     // simple: iterate proc table
-     extern struct proc proc[];
-     for(struct proc *tp = proc; tp < &proc[NPROC]; tp++){
-        if(tp->pid == pid){
+    for(struct proc *tp = proc; tp < &proc[NPROC]; tp++){
 
-	   tp->trace_enabled = 1;
-	   break;
+    // add locking to avoid race condition when accessing process
 
-        }
+      acquire(&tp->lock);  
 
-     }
+      if(tp->pid == pid){
+          tp->trace_enabled = 1;
+            release(&tp->lock);  
+            found = 1;
+            break;
+      }
+      release(&tp->lock);
 
-  }
-return 0;
+    }
+  return found ? 0 : -1; // return 0 if found and enabled, -1 if not found
 }
 
