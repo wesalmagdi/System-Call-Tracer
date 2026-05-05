@@ -107,58 +107,49 @@ sys_uptime(void)
   return xticks;
 }
 
-/**
+/*
  * sys_trace:
  * ----------
- * System call to enable tracing for a process.
+ * Syscall to start tracing a process.
+ * Args from user space:
+ *   arg0 = pid    — which process to trace
+ *   arg1 = logfd  — open fd to write JSON lines to (-1 = console only)
  *
- * Behavior:
- * - Takes a PID as input from user space.
- * - If PID matches the current process:
- *      → enable tracing for the current process.
- * - Otherwise:
- *      iterate over the global process table to find the target PID
- *      if found, enable tracing for that process.
- *
- * Synchronization:
- * - Uses per-process locking (spinlocks) to safely access and modify
- *   process state and avoid race conditions.
- *
- * Return value:
- * - Returns 0 on success.
- * - Returns -1 if the PID is not found.
+ * Enables trace_enabled and stores logfd in the target proc struct.
+ * Returns 0 on success, -1 if pid not found.
  */
 uint64
-sys_trace(void){
-   int pid;
-   argint(0,&pid); // get pid argument from user
-   struct proc *p = myproc();
-  // case 1: current process
-   if(pid == p->pid){
-      acquire(&p->lock);
-      p->trace_enabled = 1;
-      release(&p->lock); 
-      return 0;
-   }
-   // case 2: search other processes
-    extern struct proc proc[];
-    int found = 0;
+sys_trace(void)
+{
+  int pid, logfd;
+  argint(0, &pid);   /* first arg: process id to trace */
+  argint(1, &logfd); /* second arg: log file descriptor (or -1) */
 
-    for(struct proc *tp = proc; tp < &proc[NPROC]; tp++){
+  struct proc *p = myproc();
 
-    // add locking to avoid race condition when accessing process
+  /* case 1: tracing the current process (most common — called by strace itself) */
+  if(pid == p->pid){
+    acquire(&p->lock);
+    p->trace_enabled = 1;
+    p->trace_logfd   = logfd;
+    release(&p->lock);
+    return 0;
+  }
 
-      acquire(&tp->lock);  
-
-      if(tp->pid == pid){
-          tp->trace_enabled = 1;
-            release(&tp->lock);  
-            found = 1;
-            break;
-      }
+  /* case 2: tracing another process — search the process table */
+  extern struct proc proc[];
+  int found = 0;
+  for(struct proc *tp = proc; tp < &proc[NPROC]; tp++){
+    acquire(&tp->lock);
+    if(tp->pid == pid){
+      tp->trace_enabled = 1;
+      tp->trace_logfd   = logfd;
       release(&tp->lock);
-
+      found = 1;
+      break;
     }
-  return found ? 0 : -1; // return 0 if found and enabled, -1 if not found
+    release(&tp->lock);
+  }
+  return found ? 0 : -1;
 }
 

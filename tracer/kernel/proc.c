@@ -146,8 +146,8 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
-  //++ initialize tracing as disabled (default = off)
-  p->trace_enabled = 0;
+  p->trace_enabled = 0;  /* tracing off by default */
+  p->trace_logfd   = -1; /* no log file by default */
   
   return p;
 }
@@ -291,6 +291,10 @@ kfork(void)
   safestrcpy(np->name, p->name, sizeof(p->name));
 
   pid = np->pid;
+
+  /* child inherits parent's trace settings so strace sh works */
+  np->trace_enabled = p->trace_enabled;
+  np->trace_logfd   = p->trace_logfd;
 
   release(&np->lock);
 

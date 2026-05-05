@@ -85,8 +85,8 @@ enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 struct proc {
   struct spinlock lock;
   
-  // trace_enabled is set to 1 when the process should be traced
-  int trace_enabled;
+  int trace_enabled;  /* 1 = trace syscalls for this process */
+  int trace_logfd;    /* fd to write JSON lines to (-1 = no file, console only) */
 
   // p->lock must be held when using these:
   enum procstate state;        // Process state

@@ -24,8 +24,8 @@ int getpid(void);
 char* sys_sbrk(int,int);
 int pause(int);
 int uptime(void);
-// -- added--
-int trace(int);
+/* trace(pid, logfd) — enable tracing for 'pid', write JSON to 'logfd' */
+int trace(int, int);
 
 // ulib.c
 int stat(const char*, struct stat*);
