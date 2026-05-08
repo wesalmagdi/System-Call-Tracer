@@ -132,72 +132,94 @@ static uint64 (*syscalls[])(void) = {
 [SYS_trace]   sys_trace,
 };
 
-//++
-// syscall names table - index matches syscall numbers in syscall.h
+// syscall names indexed by syscall number (see syscall.h)
 static char *syscall_names[] = {
-"",           // 0 is not a syscall
-"fork",       // 1 is SYS_fork
-"exit",       // 2 is SYS_exit
-"wait",       // 3 is SYS_wait
-"pipe",       // 4 is SYS_pipe
-"read",       // 5 is SYS_read
-"kill",       // 6 is SYS_kill
-"exec",       // 7 is SYS_exec
-"fstat",      // 8 is SYS_fstat
-"chdir",      // 9 is SYS_chdir
-"dup",        // 10 is SYS_dup
-"getpid",     // 11 is SYS_getpid
-"sbrk",       // 12 is SYS_sbrk
-"sleep",      // 13 is SYS_pause
-"uptime",     // 14 is SYS_uptime
-"open",       // 15 is SYS_open
-"write",      // 16 is SYS_write
-"mknod",      // 17 is SYS_mknod
-"unlink",     // 18 is SYS_unlink
-"link",       // 19 is SYS_link
-"mkdir",      // 20 is SYS_mkdir
-"close",      // 21 is SYS_close
-
+[SYS_fork]    "fork",
+[SYS_exit]    "exit",
+[SYS_wait]    "wait",
+[SYS_pipe]    "pipe",
+[SYS_read]    "read",
+[SYS_kill]    "kill",
+[SYS_exec]    "exec",
+[SYS_fstat]   "fstat",
+[SYS_chdir]   "chdir",
+[SYS_dup]     "dup",
+[SYS_getpid]  "getpid",
+[SYS_sbrk]    "sbrk",
+[SYS_pause]   "pause",
+[SYS_uptime]  "uptime",
+[SYS_open]    "open",
+[SYS_write]   "write",
+[SYS_mknod]   "mknod",
+[SYS_unlink]  "unlink",
+[SYS_link]    "link",
+[SYS_mkdir]   "mkdir",
+[SYS_close]   "close",
+[SYS_trace]   "trace",
 };
 
-void trace_syscall(struct proc *p, int num, uint64 *args, int ret)
+// number of arguments each syscall reads from a0..a5
+static int syscall_nargs[] = {
+[SYS_fork]    0,
+[SYS_exit]    1,
+[SYS_wait]    1,
+[SYS_pipe]    1,
+[SYS_read]    3,
+[SYS_kill]    1,
+[SYS_exec]    2,
+[SYS_fstat]   2,
+[SYS_chdir]   1,
+[SYS_dup]     1,
+[SYS_getpid]  0,
+[SYS_sbrk]    2,
+[SYS_pause]   1,
+[SYS_uptime]  0,
+[SYS_open]    2,
+[SYS_write]   3,
+[SYS_mknod]   3,
+[SYS_unlink]  1,
+[SYS_link]    2,
+[SYS_mkdir]   1,
+[SYS_close]   1,
+[SYS_trace]   0,
+};
+
+// returns 1 if argument i of syscall num is a user-space path string.
+// SYS_exec is excluded: exec replaces user memory before trace_syscall runs,
+// so we pre-fetch its path in syscall() instead.
+static int
+arg_is_path(int num, int i)
 {
-  if(num <= 0 || num >= NELEM(syscall_names))
+  if(i == 0)
+    return num == SYS_open || num == SYS_mkdir ||
+           num == SYS_chdir || num == SYS_unlink || num == SYS_link ||
+           num == SYS_mknod;
+  if(i == 1)
+    return num == SYS_link;
+  return 0;
+}
+
+void
+trace_syscall(struct proc *p, int num, uint64 *args, int ret)
+{
+  if(num <= 0 || num >= NELEM(syscall_names) || syscall_names[num] == 0)
     return;
 
+  char buf[64];
+  int n = syscall_nargs[num];
+
   printf("%d: syscall %s(", p->pid, syscall_names[num]);
-
-  switch(num) {
-
-  case SYS_exec: {
-    char path[64];
-    fetchstr(args[0], path, sizeof(path));
-    printf("\"%s\", ...", path);
-    break;
+  for(int i = 0; i < n; i++){
+    if(i > 0)
+      printf(", ");
+    if(arg_is_path(num, i) && fetchstr(args[i], buf, sizeof(buf)) >= 0)
+      printf("\"%s\"", buf);
+    else
+      printf("%d", (int)args[i]);
   }
-
-  case SYS_open: {
-    char path[64];
-    fetchstr(args[0], path, sizeof(path));
-    printf("\"%s\", %d, %d",
-           path,
-           (int)args[1],
-           (int)args[2]);
-    break;
-  }
-
-  case SYS_read:
-  case SYS_write:
-  case SYS_close:
-  default:
-    printf("%ld, %ld, %ld",
-           (long)args[0],
-           (long)args[1],
-           (long)args[2]);
-  }
-
-  printf(") = %d\n", ret);
+  printf(") -> %d\n", ret);
 }
+
 void
 syscall(void)
 {
@@ -212,28 +234,36 @@ syscall(void)
     return;
   }
 
-  // save args
-  uint64 saved_args[6];
+  uint64 saved_args[3];
   saved_args[0] = p->trapframe->a0;
   saved_args[1] = p->trapframe->a1;
   saved_args[2] = p->trapframe->a2;
-  saved_args[3] = p->trapframe->a3;
-  saved_args[4] = p->trapframe->a4;
-  saved_args[5] = p->trapframe->a5;
-  
+
+  // exec replaces user memory, so the path string at saved_args[0] is
+  // unreadable after the call returns. Snapshot it now.
+  char exec_path[64];
+  int have_exec_path = 0;
+  if(num == SYS_exec)
+    have_exec_path = (fetchstr(saved_args[0], exec_path, sizeof(exec_path)) >= 0);
 
   int do_trace =
       p->trace_enabled &&
       (trace_target_pid == -1 || p->pid == trace_target_pid);
 
-  // execute syscall
   int ret = syscalls[num]();
   p->trapframe->a0 = ret;
 
-  // trace ONLY ONCE (clean + correct)
-  if(do_trace &&
-   num != SYS_write &&
-   num != SYS_read){
-    trace_syscall(p, num, saved_args, ret);
-}
+  // skip 1-byte writes to stdout/stderr — these are xv6 printf's
+  // per-character writes and would flood the trace.
+  int noisy = (num == SYS_write &&
+               (saved_args[0] == 1 || saved_args[0] == 2) &&
+               saved_args[2] == 1);
+
+  if(do_trace && !noisy){
+    if(num == SYS_exec && have_exec_path)
+      printf("%d: syscall exec(\"%s\", %d) -> %d\n",
+             p->pid, exec_path, (int)saved_args[1], ret);
+    else
+      trace_syscall(p, num, saved_args, ret);
+  }
 }
