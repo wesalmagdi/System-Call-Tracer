@@ -253,8 +253,10 @@ syscall(void)
   uint64 ret = syscalls[num]();
   p->trapframe->a0 = ret;
 
-  // skip 1-byte writes to stdout/stderr — these are xv6 printf's
-  // per-character writes and would flood the trace.
+  // Suppress 1-byte writes to stdout/stderr: xv6's printf writes one
+// character at a time, which would flood the trace on any printf call.
+// Known limitation: intentional write(1, &c, 1) calls are also suppressed
+// and will not appear in trace output. This is a design tradeoff.
   int noisy = (num == SYS_write &&
                (saved_args[0] == 1 || saved_args[0] == 2) &&
                saved_args[2] == 1);
