@@ -6,7 +6,6 @@
 #include "proc.h"
 #include "syscall.h"
 #include "defs.h"
-int trace_target_pid = -1; // -1 = trace all
 void trace_syscall(struct proc *p, int num, uint64 *args, uint64 ret);
 
 // Fetch the uint64 at addr from the current process.
@@ -246,9 +245,10 @@ syscall(void)
   if(num == SYS_exec)
     have_exec_path = (fetchstr(saved_args[0], exec_path, sizeof(exec_path)) >= 0);
 
-  int do_trace =
-      p->trace_enabled &&
-      (trace_target_pid == -1 || p->pid == trace_target_pid);
+  // Bug 7: do_trace is snapshotted *before* syscalls[num]() runs.
+  // For SYS_trace, p->trace_enabled is still 0 here, so the trace()
+  // call itself never appears in its own output. This is intentional.
+  int do_trace = p->trace_enabled;
 
   uint64 ret = syscalls[num]();
   p->trapframe->a0 = ret;

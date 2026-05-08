@@ -199,6 +199,10 @@ UPROGS=\
 	$U/_stracetest1\
 	$U/_stracetest2\
 	$U/_stracetest3\
+	$U/_terrtest\
+	$U/_forktracetest\
+	$U/_selftrace\
+	$U/_ctrace_test\
 
 
 
