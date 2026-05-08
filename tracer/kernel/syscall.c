@@ -7,7 +7,7 @@
 #include "syscall.h"
 #include "defs.h"
 int trace_target_pid = -1; // -1 = trace all
-void trace_syscall(struct proc *p, int num, uint64 *args, int ret);
+void trace_syscall(struct proc *p, int num, uint64 *args, uint64 ret);
 
 // Fetch the uint64 at addr from the current process.
 int
@@ -171,7 +171,7 @@ static int syscall_nargs[] = {
 [SYS_chdir]   1,
 [SYS_dup]     1,
 [SYS_getpid]  0,
-[SYS_sbrk]    2,
+[SYS_sbrk]    1,
 [SYS_pause]   1,
 [SYS_uptime]  0,
 [SYS_open]    2,
@@ -200,12 +200,12 @@ arg_is_path(int num, int i)
 }
 
 void
-trace_syscall(struct proc *p, int num, uint64 *args, int ret)
+trace_syscall(struct proc *p, int num, uint64 *args, uint64 ret)
 {
   if(num <= 0 || num >= NELEM(syscall_names) || syscall_names[num] == 0)
     return;
 
-  char buf[64];
+  char buf[128];
   int n = syscall_nargs[num];
 
   printf("%d: syscall %s(", p->pid, syscall_names[num]);
@@ -217,7 +217,7 @@ trace_syscall(struct proc *p, int num, uint64 *args, int ret)
     else
       printf("%d", (int)args[i]);
   }
-  printf(") -> %d\n", ret);
+  printf(") -> %ld\n", (long)ret);
 }
 
 void
@@ -241,7 +241,7 @@ syscall(void)
 
   // exec replaces user memory, so the path string at saved_args[0] is
   // unreadable after the call returns. Snapshot it now.
-  char exec_path[64];
+  char exec_path[128];
   int have_exec_path = 0;
   if(num == SYS_exec)
     have_exec_path = (fetchstr(saved_args[0], exec_path, sizeof(exec_path)) >= 0);
@@ -250,7 +250,7 @@ syscall(void)
       p->trace_enabled &&
       (trace_target_pid == -1 || p->pid == trace_target_pid);
 
-  int ret = syscalls[num]();
+  uint64 ret = syscalls[num]();
   p->trapframe->a0 = ret;
 
   // skip 1-byte writes to stdout/stderr — these are xv6 printf's
@@ -261,8 +261,8 @@ syscall(void)
 
   if(do_trace && !noisy){
     if(num == SYS_exec && have_exec_path)
-      printf("%d: syscall exec(\"%s\", %d) -> %d\n",
-             p->pid, exec_path, (int)saved_args[1], ret);
+      printf("%d: syscall exec(\"%s\", %d) -> %ld\n",
+       p->pid, exec_path, (int)saved_args[1], (long)ret);
     else
       trace_syscall(p, num, saved_args, ret);
   }
