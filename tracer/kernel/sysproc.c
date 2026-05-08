@@ -129,36 +129,12 @@ sys_uptime(void)
  * - Returns -1 if the PID is not found.
  */
 uint64
-sys_trace(void){
-   int pid;
-   argint(0,&pid); // get pid argument from user
-   struct proc *p = myproc();
-  // case 1: current process
-   if(pid == p->pid){
-      acquire(&p->lock);
-      p->trace_enabled = 1;
-      release(&p->lock); 
-      return 0;
-   }
-   // case 2: search other processes
-    extern struct proc proc[];
-    int found = 0;
+sys_trace(void)
+{
+    struct proc *p = myproc();
 
-    for(struct proc *tp = proc; tp < &proc[NPROC]; tp++){
+    p->trace_enabled = 1;
 
-    // add locking to avoid race condition when accessing process
-
-      acquire(&tp->lock);  
-
-      if(tp->pid == pid){
-          tp->trace_enabled = 1;
-            release(&tp->lock);  
-            found = 1;
-            break;
-      }
-      release(&tp->lock);
-
-    }
-  return found ? 0 : -1; // return 0 if found and enabled, -1 if not found
+    return 0;
 }
 

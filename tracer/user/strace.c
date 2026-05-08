@@ -6,17 +6,15 @@ int
 main(int argc, char *argv[])
 {
     if(argc < 2){
-        fprintf(2, "usage: strace <command> [args]\n");
+        fprintf(2, "usage: strace command\n");
         exit(1);
     }
 
-    // enable tracing for this process
-    trace(1);
+    // enable tracing (NO ARGUMENT)
+    trace();
 
-    // exec the target command
     exec(argv[1], &argv[1]);
 
-    // if exec fails
     fprintf(2, "strace: exec %s failed\n", argv[1]);
     exit(1);
 }
