@@ -196,6 +196,10 @@ UPROGS=\
 	$U/_forphan\
 	$U/_dorphan\
      	$U/_strace\
+	$U/_stracetest1\
+	$U/_stracetest2\
+	$U/_stracetest3\
+	
 
 
 
