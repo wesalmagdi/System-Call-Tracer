@@ -199,6 +199,7 @@ UPROGS=\
 	$U/_stracetest1\
 	$U/_stracetest2\
 	$U/_stracetest3\
+	$U/_btrace_test\
 	
 
 

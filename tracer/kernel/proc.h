@@ -87,7 +87,7 @@ struct proc {
   
   // trace_enabled is set to 1 when the process should be traced
   int trace_enabled;
-
+  uint tracemask;
   // p->lock must be held when using these:
   enum procstate state;        // Process state
   void *chan;                  // If non-zero, sleeping on chan

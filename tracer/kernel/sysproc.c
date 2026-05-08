@@ -132,7 +132,10 @@ uint64
 sys_trace(void)
 {
     struct proc *p = myproc();
+    int mask;
 
+    argint(0, &mask);
+    p->tracemask = (uint)mask;
     p->trace_enabled = 1;
 
     return 0;

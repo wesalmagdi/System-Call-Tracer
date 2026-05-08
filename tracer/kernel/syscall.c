@@ -247,8 +247,9 @@ syscall(void)
     have_exec_path = (fetchstr(saved_args[0], exec_path, sizeof(exec_path)) >= 0);
 
   int do_trace =
-      p->trace_enabled &&
-      (trace_target_pid == -1 || p->pid == trace_target_pid);
+    p->trace_enabled &&
+    (trace_target_pid == -1 || p->pid == trace_target_pid) &&
+    (p->tracemask == 0 || (p->tracemask & (1 << num)));
 
   uint64 ret = syscalls[num]();
   p->trapframe->a0 = ret;
