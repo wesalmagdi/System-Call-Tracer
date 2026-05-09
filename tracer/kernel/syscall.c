@@ -7,6 +7,37 @@
 #include "syscall.h"
 #include "defs.h"
 void trace_syscall(struct proc *p, int num, uint64 *args, uint64 ret);
+// ---------- Bonus: symbolic decoding for open() flags ----------
+// xv6 fcntl.h flags:
+//   O_RDONLY 0x000   O_WRONLY 0x001   O_RDWR 0x002
+//   O_CREATE 0x200   O_TRUNC  0x400
+static void
+print_open_flags(int flags)
+{
+  switch(flags & 0x003){
+  case 0:
+    printf("O_RDONLY");
+    break;
+
+  case 1:
+    printf("O_WRONLY");
+    break;
+
+  case 2:
+    printf("O_RDWR");
+    break;
+
+  default:
+    printf("O_???");
+    break;
+  }
+
+  if(flags & 0x200)
+    printf("|O_CREATE");
+
+  if(flags & 0x400)
+    printf("|O_TRUNC");
+}
 
 // Fetch the uint64 at addr from the current process.
 int
@@ -201,22 +232,85 @@ arg_is_path(int num, int i)
 void
 trace_syscall(struct proc *p, int num, uint64 *args, uint64 ret)
 {
-  if(num <= 0 || num >= NELEM(syscall_names) || syscall_names[num] == 0)
+  if(num <= 0 || num >= NELEM(syscall_names) ||
+     syscall_names[num] == 0)
     return;
 
   char buf[128];
   int n = syscall_nargs[num];
 
+  /*
+   * Print:
+   * <pid>: syscall <name>(
+   *
+   * Example:
+   * 3: syscall open(
+   */
   printf("%d: syscall %s(", p->pid, syscall_names[num]);
+
+  /*
+   * Print all syscall arguments
+   */
   for(int i = 0; i < n; i++){
+    
+    /*
+     * Add commas between arguments
+     */
     if(i > 0)
       printf(", ");
-    if(arg_is_path(num, i) && fetchstr(args[i], buf, sizeof(buf)) >= 0)
+
+    /*
+     * If argument is a path/string:
+     * print actual text instead of address
+     *
+     * Example:
+     * "test.txt"
+     */
+    if(arg_is_path(num, i) &&
+       fetchstr(args[i], buf, sizeof(buf)) >= 0){
+
       printf("\"%s\"", buf);
-    else
+    }
+
+    /*
+     * Special handling for open() flags
+     *
+     * Instead of:
+     * 514
+     *
+     * Print:
+     * O_RDWR|O_CREATE
+     */
+    else if(num == SYS_open && i == 1){
+
+      print_open_flags((int)args[i]);
+    }
+
+    /*
+     * Otherwise print numeric argument
+     */
+    else{
+
       printf("%d", (int)args[i]);
+    }
   }
-  printf(") -> %ld\n", (long)ret);
+
+  /*
+   * Print return value
+   */
+  if((long)ret == -1)
+
+    /*
+     * Failed syscall
+     */
+    printf(") -> -1 (failed)\n");
+
+  else
+
+    /*
+     * Successful syscall
+     */
+    printf(") -> %ld\n", (long)ret);
 }
 
 void
@@ -258,14 +352,20 @@ syscall(void)
 // Known limitation: intentional write(1, &c, 1) calls are also suppressed
 // and will not appear in trace output. This is a design tradeoff.
   int noisy = (num == SYS_write &&
-               (saved_args[0] == 1 || saved_args[0] == 2) &&
-               saved_args[2] == 1);
+             (saved_args[0] == 1 || saved_args[0] == 2) &&
+             saved_args[2] == 1);
 
   if(do_trace && !noisy){
-    if(num == SYS_exec && have_exec_path)
-      printf("%d: syscall exec(\"%s\", %d) -> %ld\n",
-       p->pid, exec_path, (int)saved_args[1], (long)ret);
-    else
-      trace_syscall(p, num, saved_args, ret);
+    if(num == SYS_exec && have_exec_path){
+      if((long)ret == -1)
+        printf("%d: syscall exec(\"%s\", %d) -> -1 (failed)\n",
+             p->pid, exec_path, (int)saved_args[1]);
+      else
+        printf("%d: syscall exec(\"%s\", %d) -> %ld\n",
+             p->pid, exec_path, (int)saved_args[1], (long)ret);
+  } else {
+    trace_syscall(p, num, saved_args, ret);
   }
+}
+
 }
